@@ -1,7 +1,7 @@
 # submode.py
 # -*- coding: utf-8 -*-
 
-# (서브모드: 요청하신 함수들)
+# (서브모드:  함수들)
 
 from __future__ import annotations
 
