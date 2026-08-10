@@ -7,12 +7,13 @@ from __future__ import annotations
 
 
 def crc16_modbus(data: bytes) -> int:
-    """
-    CRC-16/Modbus (RTU)
-    - init: 0xFFFF
-    - poly: 0xA001 (reflected)
-    - input: LSB-first
-    - output: 16-bit
+    """Calculate the Modbus CRC-16 value for a byte sequence.
+
+    Args:
+        data: Payload bytes to hash.
+
+    Returns:
+        The CRC-16/Modbus value as a 16-bit integer.
     """
     crc = 0xFFFF
     for b in data:
@@ -27,18 +28,39 @@ def crc16_modbus(data: bytes) -> int:
 
 
 def crc_bytes_le(data: bytes) -> bytes:
-    """
-    Modbus RTU CRC is appended as: CRC Low byte first, then High byte
+    """Return the CRC bytes in little-endian Modbus RTU order.
+
+    Args:
+        data: Payload bytes for which the CRC is computed.
+
+    Returns:
+        Two CRC bytes in low-byte/high-byte order.
     """
     crc = crc16_modbus(data)
     return bytes([crc & 0xFF, (crc >> 8) & 0xFF])
 
 
 def append_crc(data: bytes) -> bytes:
+    """Append the Modbus CRC bytes to a payload.
+
+    Args:
+        data: Payload bytes without CRC.
+
+    Returns:
+        The payload with CRC bytes appended.
+    """
     return data + crc_bytes_le(data)
 
 
 def verify_crc(frame: bytes) -> bool:
+    """Validate the CRC of a Modbus RTU frame.
+
+    Args:
+        frame: Complete RTU frame including CRC bytes.
+
+    Returns:
+        True if the CRC is valid, otherwise False.
+    """
     if len(frame) < 4:
         return False
     body = frame[:-2]

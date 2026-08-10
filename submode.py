@@ -1,11 +1,11 @@
 # submode.py
 # -*- coding: utf-8 -*-
 
-# (서브모드:  함수들)
+"""Submode helper functions that wrap serial access and Modbus RTU transmission."""
 
 from __future__ import annotations
 
-from typing import List, Tuple, Union, Optional
+from typing import List, Tuple, Optional
 
 from serial.tools import list_ports
 import serial
@@ -26,7 +26,11 @@ _last_tx_frame: bytes = b""
 
 
 def Get_Active_SerialPort() -> List[str]:
-    """현재 유효한 Serial Port 리스트 반환"""
+    """Return a list of available serial port names.
+
+    Returns:
+        A list of detected COM/TTY port device names.
+    """
     ports = []
     for p in list_ports.comports():
         # p.device: Windows -> "COM3", Linux -> "/dev/ttyUSB0"
@@ -35,8 +39,15 @@ def Get_Active_SerialPort() -> List[str]:
 
 
 def Set_SerialPort(baud_rate: int, Parity: str, Stop_Bit: int) -> bool:
-    """
-    baud rate, Parity, Stop Bit 3개를 받아 검증 후 저장
+    """Store the serial communication settings after validating them.
+
+    Args:
+        baud_rate: Baud rate value such as 4800, 9600, 38400, or 115200.
+        Parity: One of "N", "E", or "O".
+        Stop_Bit: One of 1 or 2.
+
+    Returns:
+        True when the settings are accepted, otherwise False.
     """
     global _baudrate, _parity, _stopbits
 
@@ -57,11 +68,13 @@ def Set_SerialPort(baud_rate: int, Parity: str, Stop_Bit: int) -> bool:
 
 
 def Open_SerialPort(SerialPort_No: str) -> bool:
-    """
-    Serial Port 번호(이름) 저장 및 포트 오픈
-    1-3-1 이미 열린 포트가 없으면 열고
-    1-3-2 저장된 baud/parity/stopbits로 설정
-    1-3-3 성공/실패 bool
+    """Open the selected serial port using the stored communication settings.
+
+    Args:
+        SerialPort_No: The serial port name to open.
+
+    Returns:
+        True when the port is opened successfully, otherwise False.
     """
     global _selected_port
     _selected_port = SerialPort_No
@@ -92,9 +105,10 @@ def Open_SerialPort(SerialPort_No: str) -> bool:
 
 
 def Get_Modbus_Reveive_Data() -> Tuple[bytes, int]:
-    """
-    수신 버퍼에서 현재까지 수신된 데이터를 모두 반환(consume)
-    (data, byte_count)
+    """Read and consume all currently buffered serial bytes.
+
+    Returns:
+        A tuple of (data, byte_count).
     """
     data = _manager.read_received_all()
     return data, len(data)
@@ -146,12 +160,29 @@ def Close_SerialPort() -> None:
 
 # (GUI 상태 표시용) - 요구사항 외 추가 헬퍼지만 독립모드에서 상태 표시가 필요하여 제공
 def Is_SerialPort_Open() -> bool:
+    """Report whether the serial port is currently open.
+
+    Returns:
+        True when the port is open, otherwise False.
+    """
     return _manager.is_open()
 
+
 def Get_Last_Tx_Frame() -> bytes:
+    """Return the last transmitted RTU frame bytes.
+
+    Returns:
+        The most recent transmitted frame, or empty bytes if none.
+    """
     return _last_tx_frame
 
+
 def Get_Last_Serial_Error() -> str:
+    """Return the most recent serial communication error string.
+
+    Returns:
+        The latest error message from the serial manager.
+    """
     return _manager.last_error
 
 #

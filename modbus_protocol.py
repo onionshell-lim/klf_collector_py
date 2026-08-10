@@ -1,7 +1,7 @@
 # modbus_protocol.py
 # -*- coding: utf-8 -*-
 
-# (프로토콜 구현)
+"""Helpers for parsing and building Modbus RTU request/response frames."""
 
 from __future__ import annotations
 
@@ -14,6 +14,15 @@ from modbus_crc import verify_crc
 
 @dataclass(frozen=True)
 class ParsedResponse:
+    """Structured result of a parsed Modbus response frame.
+
+    Attributes:
+        raw_frame: Original RTU bytes received.
+        is_exception: True for Modbus exception responses.
+        exception_code: Exception code when present.
+        items: Parsed address/value pairs.
+    """
+
     raw_frame: bytes
     is_exception: bool
     exception_code: Optional[int]
@@ -21,13 +30,28 @@ class ParsedResponse:
 
 
 def to_hex_string(b: bytes) -> str:
+    """Convert a byte sequence into a space-separated uppercase hex string.
+
+    Args:
+        b: Bytes to format.
+
+    Returns:
+        Hex string formatted as "XX XX".
+    """
     return " ".join(f"{x:02X}" for x in b)
 
 
 def build_read_request_payload(device_id: int, function_code: int, address: int, length: int) -> bytes:
-    """
-    Read requests for FC 1~4
-    Payload WITHOUT CRC: [id][fc][addr_hi][addr_lo][len_hi][len_lo]
+    """Build a Modbus read request payload without CRC.
+
+    Args:
+        device_id: Target Modbus slave ID.
+        function_code: Read function code (1 to 4).
+        address: Start address to read from.
+        length: Number of coils/registers to request.
+
+    Returns:
+        A payload byte sequence in the format [id][fc][addr_hi][addr_lo][len_hi][len_lo].
     """
     if not (1 <= device_id <= 247):
         raise ValueError("device_id must be 1..247 (typical range)")
@@ -48,6 +72,15 @@ def build_read_request_payload(device_id: int, function_code: int, address: int,
 
 
 def _expected_data_byte_count(function_code: int, length: int) -> int:
+    """Compute the expected payload byte count for a read response.
+
+    Args:
+        function_code: Modbus function code.
+        length: Requested coil/register quantity.
+
+    Returns:
+        The expected data byte count.
+    """
     if function_code in (1, 2):
         return int(math.ceil(length / 8.0))
     if function_code in (3, 4):
@@ -56,11 +89,15 @@ def _expected_data_byte_count(function_code: int, length: int) -> int:
 
 
 def try_extract_response_any(buffer: bytes, device_id: int, function_code: int) -> Tuple[Optional[bytes], bytes]:
-    """
-    (device_id, function_code)에 해당하는 RTU 응답 프레임을 buffer에서 찾아 반환.
-    - 예외: [id][fc|0x80][ex_code][crc_lo][crc_hi] => 5 bytes
-    - Read 정상(FC 01~04): [id][fc][byte_count][data...][crc_lo][crc_hi]
-    - Write 정상(FC 05/06/0F/10 및 요구사항 15/16 포함): [id][fc][addr_hi][addr_lo][val/qty_hi][val/qty_lo][crc_lo][crc_hi] => 8 bytes
+    """Find a valid Modbus response frame within a byte buffer.
+
+    Args:
+        buffer: Raw bytes that may contain one or more RTU responses.
+        device_id: Expected slave ID.
+        function_code: Expected function code.
+
+    Returns:
+        A tuple of (frame, remaining_buffer) where frame is the parsed response frame if found.
     """
     if len(buffer) < 5:
         return None, buffer
@@ -69,7 +106,7 @@ def try_extract_response_any(buffer: bytes, device_id: int, function_code: int) 
     expected_exc_fc = expected_fc | 0x80
 
     WRITE_FCS = {0x06, 0x10, 0x41}
-    READ_FCS  = {0x01, 0x02, 0x03, 0x04}
+    READ_FCS = {0x01, 0x02, 0x03, 0x04}
 
     for start in range(0, len(buffer) - 4):
         if buffer[start] != (device_id & 0xFF):
@@ -109,10 +146,14 @@ def try_extract_response_any(buffer: bytes, device_id: int, function_code: int) 
 
 
 def parse_response_auto(frame: bytes, start_address: int) -> ParsedResponse:
-    """
-    요청 길이(length)가 없어도 응답의 byte_count로 자동 파싱.
-    - FC1/2: bit 단위로 byte_count*8개 표시
-    - FC3/4: 16-bit 레지스터로 byte_count/2개 표시
+    """Parse a Modbus response into address/value items without requiring a requested length.
+
+    Args:
+        frame: RTU response bytes including CRC.
+        start_address: Starting address used for item numbering.
+
+    Returns:
+        A ParsedResponse object with the parsed items.
     """
     if not verify_crc(frame):
         raise ValueError("CRC mismatch")

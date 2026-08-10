@@ -11,7 +11,15 @@ POPULAR_BAUDS = [4800, 9600, 38400, 115200]
 
 
 class PortConfigFrame(ttk.Frame):
+    """Tkinter frame for selecting and opening the serial port."""
+
     def __init__(self, master, on_status_change):
+        """Initialize the port configuration UI.
+
+        Args:
+            master: Parent widget for this frame.
+            on_status_change: Callback invoked when the serial-open state changes.
+        """
         super().__init__(master)
         self.on_status_change = on_status_change
 
@@ -46,12 +54,14 @@ class PortConfigFrame(ttk.Frame):
         self.after(500, self._poll_status)
 
     def refresh_ports(self):
+        """Refresh the available port list from the submode layer."""
         ports = submode.Get_Active_SerialPort()
         self.port_combo["values"] = ports
         if ports and not self.port_var.get():
             self.port_var.set(ports[0])
 
     def open_port(self):
+        """Open the selected serial port using the current UI settings."""
         self.refresh_ports()
         port = self.port_var.get().strip()
         if not port:
@@ -72,14 +82,17 @@ class PortConfigFrame(ttk.Frame):
         self._update_status()
 
     def close_port(self):
+        """Close the currently open serial port and refresh the UI state."""
         submode.Close_SerialPort()
         self._update_status()
 
     def _update_status(self):
+        """Update the displayed connection state and notify the parent callback."""
         is_open = submode.Is_SerialPort_Open()
         self.status_lbl.config(text="열림" if is_open else "닫힘")
         self.on_status_change(is_open)
 
     def _poll_status(self):
+        """Periodically refresh the connection status label."""
         self._update_status()
         self.after(500, self._poll_status)

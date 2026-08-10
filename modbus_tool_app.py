@@ -11,7 +11,10 @@ from port_config_frame import PortConfigFrame
 
 
 class ModbusToolApp(tk.Tk):
+    """Main Tkinter application window for the Modbus RTU tool."""
+
     def __init__(self):
+        """Create the main notebook-based GUI and register the child frames."""
         super().__init__()
         self.title("Modbus RTU Tool (RS485)")
 
@@ -25,8 +28,14 @@ class ModbusToolApp(tk.Tk):
         self.protocol("WM_DELETE_WINDOW", self.on_close)
 
     def on_status_change(self, is_open: bool):
+        """Handle serial connection state changes from the child frame.
+
+        Args:
+            is_open: True when the serial port is open.
+        """
         pass
 
     def on_close(self):
+        """Close the serial port and destroy the application window."""
         submode.Close_SerialPort()
         self.destroy()

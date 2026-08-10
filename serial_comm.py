@@ -1,7 +1,7 @@
 # serial_comm.py
 # -*- coding: utf-8 -*-
 
-# (Serial + RX Thread + Circular Buffer)
+"""Serial communication helpers for RS485/Modbus data transfer."""
 
 from __future__ import annotations
 
@@ -18,9 +18,18 @@ except Exception:
 
 
 class CircularBuffer:
-    """고정 크기 1KB Circular Buffer (오버플로우 시 오래된 데이터부터 덮어씀)."""
+    """Fixed-size circular buffer for temporarily storing incoming serial bytes.
+
+    Args:
+        size: Buffer capacity in bytes.
+    """
 
     def __init__(self, size: int = 1024):
+        """Initialize the circular buffer with a fixed size.
+
+        Args:
+            size: Capacity of the buffer in bytes.
+        """
         self._buf = bytearray(size)
         self._size = size
         self._head = 0
@@ -29,6 +38,11 @@ class CircularBuffer:
         self._lock = threading.Lock()
 
     def write(self, data: bytes) -> None:
+        """Write bytes into the buffer, overwriting oldest data when full.
+
+        Args:
+            data: Incoming bytes to append.
+        """
         with self._lock:
             for b in data:
                 self._buf[self._head] = b
@@ -36,10 +50,14 @@ class CircularBuffer:
                 if self._count < self._size:
                     self._count += 1
                 else:
-                    # full -> move tail forward (overwrite oldest)
                     self._tail = (self._tail + 1) % self._size
 
     def read_all(self) -> bytes:
+        """Consume and return all buffered bytes.
+
+        Returns:
+            All available bytes from the buffer.
+        """
         with self._lock:
             if self._count == 0:
                 return b""
@@ -51,6 +69,7 @@ class CircularBuffer:
             return bytes(out)
 
     def clear(self) -> None:
+        """Clear all buffered bytes and reset indices."""
         with self._lock:
             self._head = 0
             self._tail = 0
@@ -58,7 +77,10 @@ class CircularBuffer:
 
 
 class SerialManager:
+    """High-level wrapper around pyserial with background RX handling."""
+
     def __init__(self):
+        """Initialize serial state and runtime members."""
         self.ser: Optional[serial.Serial] = None
         self.rx_buffer: Optional[CircularBuffer] = None
         self._rx_thread: Optional[threading.Thread] = None
@@ -67,6 +89,11 @@ class SerialManager:
         self.last_error: str = ""
 
     def is_open(self) -> bool:
+        """Check whether the serial port is currently open.
+
+        Returns:
+            True when a serial port is open, otherwise False.
+        """
         return self.ser is not None and self.ser.is_open
 
     def open(
@@ -78,6 +105,19 @@ class SerialManager:
         timeout: float = 0.05,
         enable_rs485_mode: bool = True,
     ) -> bool:
+        """Open the serial port and start the RX reader thread.
+
+        Args:
+            port: COM port or tty device name.
+            baudrate: Communication speed.
+            parity: Serial parity setting.
+            stopbits: Stop bit setting.
+            timeout: Read timeout in seconds.
+            enable_rs485_mode: Whether to enable RS485-specific settings if supported.
+
+        Returns:
+            True when opening succeeds, otherwise False.
+        """
         with self._lock:
             self.last_error = ""
             if self.is_open():
@@ -87,17 +127,16 @@ class SerialManager:
                 self.ser = serial.Serial(
                     port=port,
                     baudrate=baudrate,
-                    parity=parity,          # 'N'/'E'/'O'
-                    stopbits=stopbits,      # 1 / 2
+                    parity=parity,
+                    stopbits=stopbits,
                     bytesize=serial.EIGHTBITS,
-                    timeout=timeout,        # read timeout
-                    write_timeout=1.0,      # write timeout (중요)
+                    timeout=timeout,
+                    write_timeout=1.0,
                     xonxoff=False,
                     rtscts=False,
                     dsrdtr=False,
                 )
 
-                # 일부 RS485 동글은 RTS 토글로 방향 제어 필요
                 if enable_rs485_mode and RS485Settings is not None:
                     try:
                         self.ser.rs485_mode = RS485Settings(
@@ -130,6 +169,7 @@ class SerialManager:
                 return False
 
     def close(self) -> None:
+        """Close the serial port and stop the background reader thread."""
         with self._lock:
             self._stop_event.set()
             try:
@@ -149,7 +189,7 @@ class SerialManager:
             self._rx_thread = None
 
     def _rx_loop(self) -> None:
-        # 수신 쓰레드: 수신 데이터를 CircularBuffer에 저장
+        """Background loop that reads incoming serial data into the circular buffer."""
         while not self._stop_event.is_set():
             try:
                 if not self.ser or not self.ser.is_open:
@@ -171,15 +211,29 @@ class SerialManager:
                 time.sleep(0.1)
 
     def read_received_all(self) -> bytes:
+        """Return and clear all data currently buffered from the RX thread.
+
+        Returns:
+            All bytes read so far from the port.
+        """
         if not self.rx_buffer:
             return b""
         return self.rx_buffer.read_all()
 
     def clear_rx(self) -> None:
+        """Clear the receive buffer contents."""
         if self.rx_buffer:
             self.rx_buffer.clear()
 
     def write(self, data: bytes) -> bool:
+        """Write a byte sequence to the serial port.
+
+        Args:
+            data: Bytes to send.
+
+        Returns:
+            True when the full payload was written, otherwise False.
+        """
         self.last_error = ""
         try:
             if not self.ser or not self.ser.is_open:

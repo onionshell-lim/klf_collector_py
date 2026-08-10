@@ -50,7 +50,14 @@ CHANNEL_MODEL_VALUE_TITLE = {
 
 
 def _mk_map(*pairs):
-    """addr->list[title] (중복 주소 대응)"""
+    """Create an address-to-title mapping that allows duplicate addresses.
+
+    Args:
+        *pairs: Address/title pairs to include in the mapping.
+
+    Returns:
+        A dictionary mapping each address to a list of titles.
+    """
     m: dict[int, list[str]] = {}
     for addr, title in pairs:
         m.setdefault(addr, []).append(title)
@@ -97,6 +104,14 @@ MODEL_FLOAT_TITLE: dict[int, dict[int, list[str]]] = {
 
 
 def _parse_hex_u16(s: str) -> int:
+    """Parse a hexadecimal string into an unsigned 16-bit integer.
+
+    Args:
+        s: Hexadecimal text such as "0102" or "0x0102".
+
+    Returns:
+        The parsed unsigned 16-bit integer.
+    """
     s = s.strip()
     v = int(s, 16) if not s.lower().startswith("0x") else int(s, 16)
     if not (0 <= v <= 0xFFFF):
@@ -105,6 +120,14 @@ def _parse_hex_u16(s: str) -> int:
 
 
 def _parse_hex_byte(s: str) -> int:
+    """Parse a hexadecimal string into an unsigned 8-bit integer.
+
+    Args:
+        s: Hexadecimal text such as "FF" or "0x0A".
+
+    Returns:
+        The parsed unsigned 8-bit integer.
+    """
     s = s.strip()
     v = int(s, 16) if not s.lower().startswith("0x") else int(s, 16)
     if not (0 <= v <= 0xFF):
@@ -141,7 +164,14 @@ def _get_data_region_from_rtu_frame(frame: bytes) -> tuple[int, bytes]:
 
 
 class DeviceCommFrame(ttk.Frame):
+    """Tkinter frame for sending Modbus requests and displaying responses."""
+
     def __init__(self, master):
+        """Initialize the communication UI and internal state.
+
+        Args:
+            master: Parent widget for this frame.
+        """
         super().__init__(master)
 
         self.Device_ID = 1
@@ -221,6 +251,7 @@ class DeviceCommFrame(ttk.Frame):
         self.after(100, self._poll_results)
 
     def send_request(self):
+        """Build and send a Modbus request based on the current UI values."""
         if not submode.Is_SerialPort_Open():
             messagebox.showerror("오류", "먼저 포트를 열어주세요.")
             return
@@ -313,6 +344,14 @@ class DeviceCommFrame(ttk.Frame):
         ).start()
 
     def _wait_response_worker(self, device_id: int, fc: int, address: int, request_length: int):
+        """Background worker that waits for a matching RTU response.
+
+        Args:
+            device_id: Expected slave device ID.
+            fc: Expected Modbus function code.
+            address: Start address used for the request.
+            request_length: Requested quantity or payload length.
+        """
         timeout_sec = 1.5
         start = time.time()
         buf = b""
@@ -336,6 +375,7 @@ class DeviceCommFrame(ttk.Frame):
         self._result_q.put(("ok", frame, address, request_length))
 
     def _poll_results(self):
+        """Process queued response results and update the UI widgets."""
         try:
             while True:
                 kind, frame, address, request_length = self._result_q.get_nowait()
@@ -393,6 +433,14 @@ class DeviceCommFrame(ttk.Frame):
         self.after(100, self._poll_results)
 
     def _render_data_hex16(self, fc: int, start_addr: int, data: bytes, request_length: int):
+        """Render parsed read-data values into the data display area.
+
+        Args:
+            fc: Modbus function code.
+            start_addr: Starting register/coil address.
+            data: Raw response data bytes.
+            request_length: Requested quantity.
+        """
         self.data_text.delete("1.0", "end")
 
         if fc in (3, 4):
@@ -414,6 +462,14 @@ class DeviceCommFrame(ttk.Frame):
             self.data_text.insert("end", "(지원하지 않는 function code)\n")
 
     def _render_items(self, fc: int, start_addr: int, data: bytes, request_length: int):
+        """Render human-readable items and derived titles from response data.
+
+        Args:
+            fc: Modbus function code.
+            start_addr: Starting register/coil address.
+            data: Raw response data bytes.
+            request_length: Requested quantity.
+        """
         self.item_text.delete("1.0", "end")
 
         if fc not in (3, 4):
