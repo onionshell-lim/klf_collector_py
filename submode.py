@@ -7,8 +7,12 @@ from __future__ import annotations
 
 from typing import List, Tuple, Optional
 
-from serial.tools import list_ports
-import serial
+try:
+    from serial.tools import list_ports
+    import serial
+except Exception:  # pragma: no cover - defensive for broken environments
+    list_ports = None
+    serial = None
 
 from serial_comm import SerialManager
 from modbus_crc import append_crc
@@ -23,6 +27,7 @@ _stopbits: int = 1     # 1 or 2
 _selected_port: Optional[str] = None
 
 _last_tx_frame: bytes = b""
+_last_rx_frame: bytes = b""
 
 
 def Get_Active_SerialPort() -> List[str]:
@@ -32,6 +37,8 @@ def Get_Active_SerialPort() -> List[str]:
         A list of detected COM/TTY port device names.
     """
     ports = []
+    if list_ports is None:
+        return ports
     for p in list_ports.comports():
         # p.device: Windows -> "COM3", Linux -> "/dev/ttyUSB0"
         ports.append(p.device)
@@ -83,17 +90,17 @@ def Open_SerialPort(SerialPort_No: str) -> bool:
         return True
 
     parity_map = {
-        "N": serial.PARITY_NONE,
-        "E": serial.PARITY_EVEN,
-        "O": serial.PARITY_ODD,
+        "N": "N",
+        "E": "E",
+        "O": "O",
     }
     stop_map = {
-        1: serial.STOPBITS_ONE,
-        2: serial.STOPBITS_TWO,
+        1: 1,
+        2: 2,
     }
 
-    parity = parity_map.get(_parity, serial.PARITY_NONE)
-    stopbits = stop_map.get(_stopbits, serial.STOPBITS_ONE)
+    parity = parity_map.get(_parity, "N")
+    stopbits = stop_map.get(_stopbits, 1)
 
     return _manager.open(
         port=_selected_port,
@@ -110,7 +117,10 @@ def Get_Modbus_Reveive_Data() -> Tuple[bytes, int]:
     Returns:
         A tuple of (data, byte_count).
     """
+    global _last_rx_frame
     data = _manager.read_received_all()
+    if data:
+        _last_rx_frame = data
     return data, len(data)
 
 
@@ -152,10 +162,11 @@ def Send_Modbus_Transmit_Data(arg1, arg2) -> Tuple[bool, bytes]:
 
 def Close_SerialPort() -> None:
     """Port 닫고 수신 쓰레드 종료하고 Circular buffer free"""
-    global _selected_port, _last_tx_frame
+    global _selected_port, _last_tx_frame, _last_rx_frame
     _manager.close()
     _selected_port = None
     _last_tx_frame = b""
+    _last_rx_frame = b""
 
 
 # (GUI 상태 표시용) - 요구사항 외 추가 헬퍼지만 독립모드에서 상태 표시가 필요하여 제공
@@ -175,6 +186,15 @@ def Get_Last_Tx_Frame() -> bytes:
         The most recent transmitted frame, or empty bytes if none.
     """
     return _last_tx_frame
+
+
+def Get_Last_Rx_Frame() -> bytes:
+    """Return the most recently read receive bytes.
+
+    Returns:
+        The latest bytes read from the serial port, or empty bytes if none.
+    """
+    return _last_rx_frame
 
 
 def Get_Last_Serial_Error() -> str:

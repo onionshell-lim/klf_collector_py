@@ -36,6 +36,14 @@ COMMON_FLOAT_TITLE = {
     0x2259: "Distance offset",
 }
 
+AUTO_MONITOR_ITEMS = [
+    (0x0001, "Real-time velocity"),
+    (0x0003, "Average velocity"),
+    (0x0102, "Instantaneous flow rate"),
+    (0x0105, "Cumulative flow"),
+    (0x010D, "Water level"),
+]
+
 CHANNEL_MODEL_ADDR = 0x220F
 CHANNEL_MODEL_TITLE = "Channel flowcalculationmodel"
 
@@ -161,6 +169,65 @@ def _get_data_region_from_rtu_frame(frame: bytes) -> tuple[int, bytes]:
     if len(data) != byte_count:
         raise ValueError("byte_count mismatch")
     return fc, data
+
+
+def read_single_monitor_value(device_id: int, address: int, timeout_sec: float = 1.5) -> float:
+    """Read a single floating-point value from the device via Modbus FC4.
+
+    Args:
+        device_id: Target slave ID.
+        address: Register address to read from AUTO_MONITOR_ITEMS.
+        timeout_sec: Maximum time to wait for a response.
+
+    Returns:
+        The parsed float value.
+    """
+    if not submode.Is_SerialPort_Open():
+        raise RuntimeError("Serial port is not open")
+
+    quantity = 0x0002
+    tx_payload = bytes([
+        device_id & 0xFF,
+        0x04,
+        (address >> 8) & 0xFF,
+        address & 0xFF,
+        (quantity >> 8) & 0xFF,
+        quantity & 0xFF,
+    ])
+
+    while True:
+        _, n = submode.Get_Modbus_Reveive_Data()
+        if n == 0:
+            break
+
+    ok, _ = submode.Send_Modbus_Transmit_Data(6, tx_payload)
+    if not ok:
+        raise RuntimeError(submode.Get_Last_Serial_Error() if hasattr(submode, "Get_Last_Serial_Error") else "Send failed")
+
+    start = time.time()
+    buf = b""
+    frame = None
+    while time.time() - start < timeout_sec:
+        chunk, n = submode.Get_Modbus_Reveive_Data()
+        if n > 0:
+            buf += chunk
+            found, remain = try_extract_response_any(buf, device_id, 0x04)
+            if found is not None:
+                frame = found
+                buf = remain
+                break
+        time.sleep(0.02)
+
+    if frame is None:
+        raise TimeoutError("No response received")
+
+    fc, data = _get_data_region_from_rtu_frame(frame)
+    if fc not in (0x04,):
+        raise ValueError(f"Unexpected function code: 0x{fc:02X}")
+    if len(data) < 4:
+        raise ValueError("Response data too short for a float")
+
+    return _float_from_4bytes_reorder(data[:4])
 
 
 class DeviceCommFrame(ttk.Frame):

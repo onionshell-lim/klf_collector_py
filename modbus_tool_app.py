@@ -11,12 +11,12 @@ from port_config_frame import PortConfigFrame
 
 
 class ModbusToolApp(tk.Tk):
-    """Main Tkinter application window for the Modbus RTU tool."""
+    """Main Tkinter application window for the KLF110 Modbus RTU Collector."""
 
     def __init__(self):
         """Create the main notebook-based GUI and register the child frames."""
         super().__init__()
-        self.title("Modbus RTU Tool (RS485)")
+        self.title("KLF110 Modbus RTU Collector(RS485)")
 
         nb = ttk.Notebook(self)
         nb.pack(fill="both", expand=True)

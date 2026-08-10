@@ -9,11 +9,14 @@ import threading
 import time
 from typing import Optional
 
-import serial
+try:
+    import serial
+except Exception:  # pragma: no cover - defensive for broken environments
+    serial = None
 
 try:
     from serial.rs485 import RS485Settings  # pyserial의 RS485 지원
-except Exception:
+except Exception:  # pragma: no cover - defensive for broken environments
     RS485Settings = None
 
 
@@ -81,7 +84,7 @@ class SerialManager:
 
     def __init__(self):
         """Initialize serial state and runtime members."""
-        self.ser: Optional[serial.Serial] = None
+        self.ser = None
         self.rx_buffer: Optional[CircularBuffer] = None
         self._rx_thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
@@ -123,13 +126,17 @@ class SerialManager:
             if self.is_open():
                 return True
 
+            if serial is None or not hasattr(serial, "Serial"):
+                self.last_error = "pyserial is not available in this Python environment"
+                return False
+
             try:
                 self.ser = serial.Serial(
                     port=port,
                     baudrate=baudrate,
                     parity=parity,
                     stopbits=stopbits,
-                    bytesize=serial.EIGHTBITS,
+                    bytesize=8,
                     timeout=timeout,
                     write_timeout=1.0,
                     xonxoff=False,
