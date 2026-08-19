@@ -154,6 +154,26 @@ def _float_from_4bytes_reorder(b4: bytes) -> float:
     return struct.unpack(">f", reordered)[0]
 
 
+def _double_from_8bytes_reorder(b8: bytes) -> float:
+    """Convert 8-byte Modbus input-register data into a 64-bit double.
+
+    The device encodes the 64-bit floating-point value in a non-standard byte
+    order when returned over Modbus: [7,8,5,6,3,4,1,2] in 1-based indexing,
+    which corresponds to the sequence [b8[6], b8[7], b8[4], b8[5], b8[2],
+    b8[3], b8[0], b8[1]].
+
+    Args:
+        b8: Raw 8-byte register payload.
+
+    Returns:
+        The decoded 64-bit float value.
+    """
+    if len(b8) != 8:
+        raise ValueError("need 8 bytes")
+    reordered = bytes([b8[6], b8[7], b8[4], b8[5], b8[2], b8[3], b8[0], b8[1]])
+    return struct.unpack(">d", reordered)[0]
+
+
 def _get_data_region_from_rtu_frame(frame: bytes) -> tuple[int, bytes]:
     """
     정상 응답: [id][fc][byte_count][data...][crc_lo][crc_hi]
@@ -185,7 +205,11 @@ def read_single_monitor_value(device_id: int, address: int, timeout_sec: float =
     if not submode.Is_SerialPort_Open():
         raise RuntimeError("Serial port is not open")
 
-    quantity = 0x0002
+    if address == 0x0105:
+        quantity = 0x0004
+    else:
+        quantity = 0x0002
+
     tx_payload = bytes([
         device_id & 0xFF,
         0x04,
@@ -224,6 +248,12 @@ def read_single_monitor_value(device_id: int, address: int, timeout_sec: float =
     fc, data = _get_data_region_from_rtu_frame(frame)
     if fc not in (0x04,):
         raise ValueError(f"Unexpected function code: 0x{fc:02X}")
+
+    if address == 0x0105:
+        if len(data) < 8:
+            raise ValueError("Response data too short for a double")
+        return _double_from_8bytes_reorder(data[:8])
+
     if len(data) < 4:
         raise ValueError("Response data too short for a float")
 
@@ -552,6 +582,17 @@ class DeviceCommFrame(ttk.Frame):
             else:
                 self.channel_model = None
                 self.item_text.insert("end", f"{CHANNEL_MODEL_TITLE}:UNKNOWN({model_val})\n")
+            return
+
+        if start_addr == 0x0105:
+            if len(data) < 8:
+                self.item_text.insert("end", "(cumulative flow용 데이터 8바이트 부족)\n")
+                return
+            try:
+                value = _double_from_8bytes_reorder(data[:8])
+                self.item_text.insert("end", f"Cumulative flow:{value}\n")
+            except Exception:
+                self.item_text.insert("end", "(cumulative flow 변환 실패)\n")
             return
 
         if len(data) < 4:
