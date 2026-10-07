@@ -345,7 +345,24 @@ class DeviceCommFrame(ttk.Frame):
         self.grid_rowconfigure(7, weight=1)
         self.grid_rowconfigure(9, weight=1)
 
-        self.after(100, self._poll_results)
+        self._poll_results_after = None
+        self._schedule_poll_results()
+
+    def destroy(self):
+        """Cancel queued polling callbacks before the frame is destroyed."""
+        if getattr(self, "_poll_results_after", None) is not None:
+            try:
+                self.after_cancel(self._poll_results_after)
+            except Exception:
+                pass
+            self._poll_results_after = None
+        super().destroy()
+
+    def _schedule_poll_results(self):
+        """Schedule the result poll loop while the widget still exists."""
+        if not self.winfo_exists():
+            return
+        self._poll_results_after = self.after(100, self._poll_results)
 
     def send_request(self):
         """Build and send a Modbus request based on the current UI values."""
@@ -527,7 +544,8 @@ class DeviceCommFrame(ttk.Frame):
         except queue.Empty:
             pass
 
-        self.after(100, self._poll_results)
+        if self.winfo_exists():
+            self._schedule_poll_results()
 
     def _render_data_hex16(self, fc: int, start_addr: int, data: bytes, request_length: int):
         """Render parsed read-data values into the data display area.

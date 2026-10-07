@@ -5,9 +5,10 @@ from __future__ import annotations
 import threading
 import time
 import tkinter as tk
+import tkinter.font as tkfont
 from tkinter import ttk, messagebox
 from datetime import datetime
-
+"""  """
 import submode
 from device_comm_frame import AUTO_MONITOR_ITEMS, read_single_monitor_value
 
@@ -29,6 +30,8 @@ class PortConfigFrame(ttk.Frame):
 
         self.port_var = tk.StringVar()
         self.baud_var = tk.StringVar(value=str(9600))
+
+        self._apply_font_scaling()
 
         # UI
         ttk.Label(self, text="Serial Port").grid(row=0, column=0, sticky="w", padx=6, pady=6)
@@ -101,9 +104,39 @@ class PortConfigFrame(ttk.Frame):
         self._auto_thread: threading.Thread | None = None
         self._auto_file = None
         self._auto_device_id = 1
+        self._poll_status_after = None
 
         # 주기적 상태 업데이트
-        self.after(500, self._poll_status)
+        self._schedule_poll_status()
+
+    def _apply_font_scaling(self):
+        """Increase the default Tk/ttk font size after the root window exists."""
+        default_font = tkfont.nametofont("TkDefaultFont")
+        size = max(10, int(default_font.cget("size") * 1.5))
+        default_font.configure(size=size)
+
+        style = ttk.Style(self)
+        family = default_font.cget("family")
+        style.configure(".", font=(family, size))
+        style.configure("TLabel", font=(family, size))
+        style.configure("TButton", font=(family, size))
+        style.configure("TCombobox", font=(family, size))
+
+    def destroy(self):
+        """Cancel pending polling callbacks before destroying the frame."""
+        if getattr(self, "_poll_status_after", None) is not None:
+            try:
+                self.after_cancel(self._poll_status_after)
+            except Exception:
+                pass
+            self._poll_status_after = None
+        super().destroy()
+
+    def _schedule_poll_status(self):
+        """Schedule the next connection-status update only while the widget remains alive."""
+        if not self.winfo_exists():
+            return
+        self._poll_status_after = self.after(500, self._poll_status)
 
     def refresh_ports(self):
         """Refresh the available port list from the submode layer."""
@@ -256,5 +289,7 @@ class PortConfigFrame(ttk.Frame):
 
     def _poll_status(self):
         """Periodically refresh the connection status label."""
+        if not self.winfo_exists():
+            return
         self._update_status()
-        self.after(500, self._poll_status)
+        self._schedule_poll_status()
